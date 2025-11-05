@@ -40,4 +40,4 @@ tag:
 	git push origin v{{ VERSION }}
 
 run:
-    uv run --env-file .env fastapi dev tests/main.py
+    uv run --env-file .env fastapi dev tests/demo.py

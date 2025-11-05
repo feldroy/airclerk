@@ -6,7 +6,7 @@ from clerk_backend_api.security.types import AuthenticateRequestOptions
 from fastapi import Depends, status
 import httpx
 from pydantic_settings import BaseSettings
-
+from rich import print
 
 class Settings(BaseSettings):
     """Environment variable specification"""
@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     CLERK_SECRET_KEY: str
     CLERK_JS_SRC: str = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
     LOGIN_ROUTE: str = '/login'
+    LOGIN_REDIRECT_ROUTE: str = '/'
     LOGOUT_ROUTE: str = '/logout'
+    LOGOUT_REDIRECT_ROUTE: str = '/'
 
 settings = Settings()
 
@@ -98,37 +100,6 @@ def _extract_primary_email(user: Any) -> str:
     return ""
 
 
-
-@router.get(settings.LOGIN_ROUTE)
-async def login(request: air.Request):
-    httpx_request = await _to_httpx_request(request)
-    origin = f"{request.url.scheme}://{request.url.netloc}"
-
-    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as sdk:
-        state = sdk.authenticate_request(
-            httpx_request,
-            AuthenticateRequestOptions(authorized_parties=[origin]),
-        )
-
-        if not state.is_signed_in:
-            return _signed_out_snippet()
-
-        user_id = getattr(state, "user_id", None) or state.payload.get("sub")
-        # TODO: save user_id to db
-        # TODO: save user_id to session
-        user = sdk.users.get(user_id=user_id)
-        email = _extract_primary_email(user)
-        # https://github.com/clerk/clerk-sdk-python/blob/main/docs/models/user.md
-        # TODO: save email to session        
-        # return _signed_in_page(email)
-        return air.RedirectResponse('/dashboard')
-    
-
-@router.post(settings.LOGOUT_ROUTE)
-async def logout(request: air.Request):
-    return air.RedirectResponse('/')
-
-
 async def _require_auth(request: air.Request) -> Dict[str, Any]:
     """Require user to be authenticated - raises exception if not.
 
@@ -144,8 +115,8 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
         content=body,
     )
     origin = f"{request.url.scheme}://{request.url.netloc}"
-    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as sdk:
-        state = sdk.authenticate_request(
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
+        state = clerk.authenticate_request(
             httpx_request,
             AuthenticateRequestOptions(authorized_parties=[origin]),
         )
@@ -160,7 +131,50 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
                 status_code=status.HTTP_303_SEE_OTHER,
                 headers={"Location": login.url()},
             )            
-            return air.RedirectResponse(settings.LOGIN_ROUTE)
-        return state
+        user_id = getattr(state, "user_id", None) or state.payload.get("sub")
+        user = clerk.users.get(user_id=user_id)
+        return user
 
-require_auth = Depends(_require_auth)    
+require_auth = Depends(_require_auth)   
+
+
+@router.get(settings.LOGIN_ROUTE)
+async def login(request: air.Request):
+    httpx_request = await _to_httpx_request(request)
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
+        state = clerk.authenticate_request(
+            httpx_request,
+            AuthenticateRequestOptions(authorized_parties=[origin]),
+        )
+
+        if not state.is_signed_in:
+            return _signed_out_snippet()
+
+        user_id = getattr(state, "user_id", None) or state.payload.get("sub")
+        # TODO: save user_id to db
+        # https://github.com/clerk/clerk-sdk-python/blob/main/docs/models/user.md
+        user = clerk.users.get(user_id=user_id)
+        user['primary_email'] = _extract_primary_email(user)
+        request.session['user'] = user
+        print(user)
+        return air.RedirectResponse(settings.LOGIN_REDIRECT_ROUTE)
+    
+
+@router.get(settings.LOGOUT_ROUTE)
+async def logout(request: air.Request):
+    body = await request.body()
+    httpx_request = httpx.Request(
+        method=request.method,
+        url=str(request.url),
+        headers=dict(request.headers),
+        content=body,
+    )    
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
+        pass
+
+    return air.RedirectResponse(settings.LOGOUT_REDIRECT_ROUTE)
+
+
+ 

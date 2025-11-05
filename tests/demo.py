@@ -10,11 +10,11 @@ app.include_router(airclerk.router)
 def index(request: air.Request):
     return air.layouts.mvpcss(
         air.H1('AirClerk demo'),
-        air.P(
-            air.A(
-                'protected', href=protected.url()    
-            )
-        )
+        air.Ul(
+            air.Li(air.A('login', href=airclerk.settings.LOGIN_ROUTE)),
+            air.Li(air.A('protected', href=protected.url()))
+        ),
+        air.Article(air.Aside(str(request.session['user']))),
 
     )
 
@@ -22,5 +22,8 @@ def index(request: air.Request):
 def protected(request: air.Request, user = airclerk.require_auth):
     return air.layouts.mvpcss(
         air.H1('Protected view'),
-        air.P(str(user))
+        air.Article(air.Aside(str(user))),
+        air.Hr(),
+        air.Article(air.Aside(str(request.session['user']))),
+        
     )
