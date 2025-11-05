@@ -49,6 +49,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 """)
 
+CLERK_SCRIPT = air.Script(
+        src=settings.CLERK_JS_SRC,
+        async_=True,
+        crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
+        **{"data-clerk-publishable-key": settings.PUBLISHABLE_KEY},
+    )
+
+def _signed_out_snippet() -> air.BaseTag:
+    return air.Tag(
+        air.Div(id="sign-in"),
+        CLERK_SCRIPT,
+        SIGN_IN_SCRIPT,
+    )
+
+
+def _signed_in_snippet(email: str) -> air.BaseTag:
+    clean_email = email or "Unknown user"
+    return air.Tag(
+        air.Button("Sign out", id="sign-out", type="button"),
+        CLERK_SCRIPT,
+        AUTH_SCRIPT,
+    )
+
 async def _to_httpx_request(request: air.Request) -> httpx.Request:
     body = await request.body()
     return httpx.Request(
@@ -58,14 +81,19 @@ async def _to_httpx_request(request: air.Request) -> httpx.Request:
         content=body,
     )
 
+def _extract_primary_email(user: Any) -> str:
+    email_addresses = list(getattr(user, "email_addresses", []) or [])
+    primary_id = getattr(user, "primary_email_address_id", None)
 
-def _clerk_script() -> air.Script:
-    return air.Script(
-        src=settings.CLERK_JS_SRC,
-        async_=True,
-        crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
-        **{"data-clerk-publishable-key": settings.PUBLISHABLE_KEY},
-    )
+    for address in email_addresses:
+        if getattr(address, "id", None) == primary_id:
+            return getattr(address, "email_address", "")
+
+    if email_addresses:
+        return getattr(email_addresses[0], "email_address", "")
+
+    return ""
+
 
 
 @router.get(settings.LOGIN_ROUTE)
@@ -73,20 +101,21 @@ async def login(request: air.Request):
     httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
 
-    with Clerk(bearer_auth=SECRET_KEY) as sdk:
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as sdk:
         state = sdk.authenticate_request(
             httpx_request,
             AuthenticateRequestOptions(authorized_parties=[origin]),
         )
 
         if not state.is_signed_in:
-            return _signed_out_page()
+            return _signed_out_snippet()
 
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
         # TODO: save user_id to db
         # TODO: save user_id to session
         user = sdk.users.get(user_id=user_id)
         email = _extract_primary_email(user)
+        # https://github.com/clerk/clerk-sdk-python/blob/main/docs/models/user.md
         # TODO: save email to session        
         # return _signed_in_page(email)
         return air.RedirectResponse('/dashboard')
