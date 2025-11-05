@@ -87,7 +87,6 @@ async def login(request: air.Request, next: str = "/"):
         )
 
         if not state.is_signed_in:
-            print(f"User not signed in, will redirect to: {next}")
             return air.Tag(
                 air.Div(id="sign-in"),
                 air.Script(
@@ -117,7 +116,6 @@ async def login(request: air.Request, next: str = "/"):
 
         # User is already authenticated via Clerk JWT
         # Redirect to the 'next' parameter or default redirect route
-        print(f"User authenticated via Clerk, redirecting to: {next}")
         return air.RedirectResponse(next if next != "/" else settings.CLERK_LOGIN_REDIRECT_ROUTE)
     
 
@@ -125,9 +123,7 @@ async def login(request: air.Request, next: str = "/"):
 async def logout(request: air.Request, user=require_auth):
     # Return a page that triggers client-side logout via Clerk JavaScript SDK
     # This will clear the JWT token from browser cookies
-    print("Logging out user via client-side Clerk SDK")
     return air.Tag(
-        air.H1("Signing out..."),
         air.Script(
             src=settings.CLERK_JS_SRC,
             async_=True,
