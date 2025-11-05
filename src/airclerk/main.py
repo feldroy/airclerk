@@ -6,17 +6,21 @@ from clerk_backend_api.security.types import AuthenticateRequestOptions
 from fastapi import Depends, status
 import httpx
 from pydantic_settings import BaseSettings
-from rich import print
+
 
 class Settings(BaseSettings):
     """Environment variable specification"""
+
     CLERK_PUBLISHABLE_KEY: str
     CLERK_SECRET_KEY: str
-    CLERK_JS_SRC: str = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
-    CLERK_LOGIN_ROUTE: str = '/login'
-    CLERK_LOGIN_REDIRECT_ROUTE: str = '/'
-    CLERK_LOGOUT_ROUTE: str = '/logout'
-    CLERK_LOGOUT_REDIRECT_ROUTE: str = '/'
+    CLERK_JS_SRC: str = (
+        "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    )
+    CLERK_LOGIN_ROUTE: str = "/login"
+    CLERK_LOGIN_REDIRECT_ROUTE: str = "/"
+    CLERK_LOGOUT_ROUTE: str = "/logout"
+    CLERK_LOGOUT_REDIRECT_ROUTE: str = "/"
+
 
 settings = Settings()
 
@@ -35,8 +39,7 @@ async def _to_httpx_request(request: air.Request) -> httpx.Request:
 
 
 async def _require_auth(request: air.Request) -> Dict[str, Any]:
-    """Require user to be authenticated - raises exception that redirects if not.
-    """
+    """Require user to be authenticated - raises exception that redirects if not."""
     body = await request.body()
     httpx_request = httpx.Request(
         method=request.method,
@@ -56,9 +59,9 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
             redirect_after_login = str(request.url.path)
             if request.url.query:
                 redirect_after_login += f"?{request.url.query}"
-            
+
             login_url = f"{login.url()}?next={redirect_after_login}"
-            
+
             if request.htmx:
                 raise air.HTTPException(
                     status_code=status.HTTP_303_SEE_OTHER,
@@ -67,12 +70,13 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
             raise air.HTTPException(
                 status_code=status.HTTP_303_SEE_OTHER,
                 headers={"Location": login_url},
-            )            
+            )
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
         user = clerk.users.get(user_id=user_id)
         return user
 
-require_auth = Depends(_require_auth)   
+
+require_auth = Depends(_require_auth)
 
 
 @router.get(settings.CLERK_LOGIN_ROUTE)
@@ -94,7 +98,7 @@ async def login(request: air.Request, next: str = "/"):
                     async_=True,
                     crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
                     **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
-                ), 
+                ),
                 air.Script(f"""
                     document.addEventListener('DOMContentLoaded', async () => {{
                     if (!window.Clerk) return;
@@ -116,8 +120,10 @@ async def login(request: air.Request, next: str = "/"):
 
         # User is already authenticated via Clerk JWT
         # Redirect to the 'next' parameter or default redirect route
-        return air.RedirectResponse(next if next != "/" else settings.CLERK_LOGIN_REDIRECT_ROUTE)
-    
+        return air.RedirectResponse(
+            next if next != "/" else settings.CLERK_LOGIN_REDIRECT_ROUTE
+        )
+
 
 @router.get(settings.CLERK_LOGOUT_ROUTE)
 async def logout(request: air.Request, user=require_auth):
@@ -144,6 +150,3 @@ async def logout(request: air.Request, user=require_auth):
             }});
         """),
     )
-
-
- 
