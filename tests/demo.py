@@ -28,9 +28,7 @@ def index(request: air.Request):
             air.Li(air.A('logout', href=airclerk.settings.CLERK_LOGOUT_ROUTE)),
             air.Li(air.A('protected', href=protected.url()))
         ),
-        air.H3('User session'),
-        dump(request.session.get('user', {}))
-
+        air.P('Authentication is handled by Clerk via JWT tokens in cookies.')
     )
 
 @app.page
@@ -38,9 +36,6 @@ def protected(request: air.Request, user = airclerk.require_auth):
     return air.layouts.mvpcss(
         air.H1('Protected view'),
         air.P(air.A('home', href=index.url())),
-        air.H3('User session'),
-        dump(request.session.get('user', {})),
         air.H2('Clerk user object'),
         dump(user)
-        
     )
