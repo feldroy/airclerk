@@ -69,14 +69,6 @@ def _signed_out_snippet() -> air.BaseTag:
     )
 
 
-def _signed_in_snippet(email: str) -> air.BaseTag:
-    clean_email = email or "Unknown user"
-    return air.Tag(
-        air.Button("Sign out", id="sign-out", type="button"),
-        CLERK_SCRIPT,
-        AUTH_SCRIPT,
-    )
-
 async def _to_httpx_request(request: air.Request) -> httpx.Request:
     body = await request.body()
     return httpx.Request(
