@@ -1,5 +1,5 @@
 [project]
-name = "airclerk"
+name = "AirClerk"
 version = "0.1.0"
 description = "Air + Clerk for user management."
 readme = "README.md"

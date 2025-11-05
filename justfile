@@ -38,3 +38,6 @@ tag:
 	echo "Tagging version v{{ VERSION }}"
 	git tag -a v{{ VERSION }} -m "Creating version v{{ VERSION }}"
 	git push origin v{{ VERSION }}
+
+run:
+    uv run --env-file .env fastapi dev tests/main.py

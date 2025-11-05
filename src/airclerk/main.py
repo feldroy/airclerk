@@ -1,6 +1,9 @@
+from typing import Any, Dict
+
 import air
 from clerk_backend_api import Clerk
 from clerk_backend_api.security.types import AuthenticateRequestOptions
+from fastapi import Depends, status
 import httpx
 from pydantic_settings import BaseSettings
 
@@ -53,7 +56,7 @@ CLERK_SCRIPT = air.Script(
         src=settings.CLERK_JS_SRC,
         async_=True,
         crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
-        **{"data-clerk-publishable-key": settings.PUBLISHABLE_KEY},
+        **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
     )
 
 def _signed_out_snippet() -> air.BaseTag:
@@ -123,4 +126,41 @@ async def login(request: air.Request):
 
 @router.post(settings.LOGOUT_ROUTE)
 async def logout(request: air.Request):
-    # TODO
+    return air.RedirectResponse('/')
+
+
+async def _require_auth(request: air.Request) -> Dict[str, Any]:
+    """Require user to be authenticated - raises exception if not.
+
+    Additionally, if the authenticated user's row does not have an email we
+    redirect them to the add-email form so they can supply one before using
+    protected areas of the app.
+    """
+    body = await request.body()
+    httpx_request = httpx.Request(
+        method=request.method,
+        url=str(request.url),
+        headers=dict(request.headers),
+        content=body,
+    )
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as sdk:
+        state = sdk.authenticate_request(
+            httpx_request,
+            AuthenticateRequestOptions(authorized_parties=[origin]),
+        )
+
+        if not state.is_signed_in:
+            if request.htmx:
+                raise air.HTTPException(
+                    status_code=status.HTTP_303_SEE_OTHER,
+                    headers={"Location": login.url()},
+                )
+            raise air.HTTPException(
+                status_code=status.HTTP_303_SEE_OTHER,
+                headers={"Location": login.url()},
+            )            
+            return air.RedirectResponse(settings.LOGIN_ROUTE)
+        return state
+
+require_auth = Depends(_require_auth)    
