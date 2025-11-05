@@ -101,11 +101,7 @@ def _extract_primary_email(user: Any) -> str:
 
 
 async def _require_auth(request: air.Request) -> Dict[str, Any]:
-    """Require user to be authenticated - raises exception if not.
-
-    Additionally, if the authenticated user's row does not have an email we
-    redirect them to the add-email form so they can supply one before using
-    protected areas of the app.
+    """Require user to be authenticated - raises exception that redirects if not.
     """
     body = await request.body()
     httpx_request = httpx.Request(
@@ -130,7 +126,8 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
             raise air.HTTPException(
                 status_code=status.HTTP_303_SEE_OTHER,
                 headers={"Location": login.url()},
-            )            
+            )     
+        print(state.payload)       
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
         user = clerk.users.get(user_id=user_id)
         return user
@@ -156,14 +153,21 @@ async def login(request: air.Request):
         # TODO: save user_id to db
         # https://github.com/clerk/clerk-sdk-python/blob/main/docs/models/user.md
         user = clerk.users.get(user_id=user_id)
-        user['primary_email'] = _extract_primary_email(user)
-        request.session['user'] = user
-        print(user)
+        # TODO expand the request session dramatically
+        request.session['user'] = dict(
+            sid=state.payload['sid'],            
+            id=user.id,
+            email=_extract_primary_email(user),
+            first_name=user.first_name,
+            last_name=user.last_name,
+            image_url=user.image_url,
+            last_active_at=user.last_active_at
+        )
         return air.RedirectResponse(settings.LOGIN_REDIRECT_ROUTE)
     
 
 @router.get(settings.LOGOUT_ROUTE)
-async def logout(request: air.Request):
+async def logout(request: air.Request, user=require_auth):
     body = await request.body()
     httpx_request = httpx.Request(
         method=request.method,
@@ -172,7 +176,12 @@ async def logout(request: air.Request):
         content=body,
     )    
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
-        pass
+        session_id = request.session.get('sid')
+        if session_id is not None:
+            clerk.sessions.revoke(session_id=request.session.get('sid'))
+
+    if 'user' in request.session:
+        request.session.pop('user')
 
     return air.RedirectResponse(settings.LOGOUT_REDIRECT_ROUTE)
 
