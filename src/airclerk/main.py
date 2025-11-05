@@ -1,0 +1,97 @@
+import air
+from clerk_backend_api import Clerk
+from clerk_backend_api.security.types import AuthenticateRequestOptions
+import httpx
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Environment variable specification"""
+    CLERK_PUBLISHABLE_KEY: str
+    CLERK_SECRET_KEY: str
+    CLERK_JS_SRC: str = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    LOGIN_ROUTE: str = '/login'
+    LOGOUT_ROUTE: str = '/logout'
+
+settings = Settings()
+
+
+router = air.AirRouter()
+
+SIGN_IN_SCRIPT = air.Script("""
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!window.Clerk) return;
+
+  await window.Clerk.load();
+
+  if (window.Clerk.user) {
+    window.location.assign('/');
+    return;
+  }
+
+  window.Clerk.mountSignIn(
+    document.getElementById('sign-in'),
+    { redirectUrl: '/' }
+  );
+});
+""")
+
+
+AUTH_SCRIPT = air.Script("""
+document.addEventListener('DOMContentLoaded', async () => {
+  await window.Clerk.load();
+  
+  const button = document.getElementById('sign-out');
+
+  button.addEventListener('click', async () => {
+    await window.Clerk.signOut({ redirectUrl: '/' });
+  });
+});
+""")
+
+async def _to_httpx_request(request: air.Request) -> httpx.Request:
+    body = await request.body()
+    return httpx.Request(
+        method=request.method,
+        url=str(request.url),
+        headers=dict(request.headers),
+        content=body,
+    )
+
+
+def _clerk_script() -> air.Script:
+    return air.Script(
+        src=settings.CLERK_JS_SRC,
+        async_=True,
+        crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
+        **{"data-clerk-publishable-key": settings.PUBLISHABLE_KEY},
+    )
+
+
+@router.get(settings.LOGIN_ROUTE)
+async def login(request: air.Request):
+    httpx_request = await _to_httpx_request(request)
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+
+    with Clerk(bearer_auth=SECRET_KEY) as sdk:
+        state = sdk.authenticate_request(
+            httpx_request,
+            AuthenticateRequestOptions(authorized_parties=[origin]),
+        )
+
+        if not state.is_signed_in:
+            return _signed_out_page()
+
+        user_id = getattr(state, "user_id", None) or state.payload.get("sub")
+        # TODO: save user_id to db
+        # TODO: save user_id to session
+        user = sdk.users.get(user_id=user_id)
+        email = _extract_primary_email(user)
+        # TODO: save email to session        
+        # return _signed_in_page(email)
+        return air.RedirectResponse('/dashboard')
+    
+
+@router.post(settings.LOGOUT_ROUTE)
+async def logout(request: air.Request):
+    # TODO

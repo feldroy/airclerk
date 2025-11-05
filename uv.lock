@@ -24,6 +24,7 @@ source = { editable = "." }
 dependencies = [
     { name = "air" },
     { name = "clerk-backend-api" },
+    { name = "httpx" },
     { name = "pydantic-settings" },
 ]
 
@@ -40,6 +41,7 @@ dev = [
 requires-dist = [
     { name = "air", specifier = ">=0.39.0" },
     { name = "clerk-backend-api", specifier = ">=3.3.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
 ]
 
