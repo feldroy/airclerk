@@ -126,8 +126,7 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
             raise air.HTTPException(
                 status_code=status.HTTP_303_SEE_OTHER,
                 headers={"Location": login.url()},
-            )     
-        print(state.payload)       
+            )            
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
         user = clerk.users.get(user_id=user_id)
         return user
