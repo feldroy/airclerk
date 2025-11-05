@@ -24,19 +24,6 @@ settings = Settings()
 router = air.AirRouter()
 
 
-AUTH_SCRIPT = air.Script("""
-document.addEventListener('DOMContentLoaded', async () => {
-  await window.Clerk.load();
-  
-  const button = document.getElementById('sign-out');
-
-  button.addEventListener('click', async () => {
-    await window.Clerk.signOut({ redirectUrl: '/' });
-  });
-});
-""")
-
-
 async def _to_httpx_request(request: air.Request) -> httpx.Request:
     body = await request.body()
     return httpx.Request(
@@ -108,7 +95,7 @@ async def login(request: air.Request, next: str = "/"):
                     async_=True,
                     crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
                     **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
-                ), # Clerk CDN script
+                ), 
                 air.Script(f"""
                     document.addEventListener('DOMContentLoaded', async () => {{
                     if (!window.Clerk) return;
@@ -136,22 +123,31 @@ async def login(request: air.Request, next: str = "/"):
 
 @router.get(settings.CLERK_LOGOUT_ROUTE)
 async def logout(request: air.Request, user=require_auth):
-    # Get session ID from Clerk's authenticated state
-    httpx_request = await _to_httpx_request(request)
-    origin = f"{request.url.scheme}://{request.url.netloc}"
-    
-    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
-        state = clerk.authenticate_request(
-            httpx_request,
-            AuthenticateRequestOptions(authorized_parties=[origin]),
-        )
-        if state.is_signed_in and state.payload:
-            session_id = state.payload.get('sid')
-            if session_id:
-                print("Revoking Clerk session:", session_id)
-                clerk.sessions.revoke(session_id=session_id)
-
-    return air.RedirectResponse(settings.CLERK_LOGOUT_REDIRECT_ROUTE)
+    # Return a page that triggers client-side logout via Clerk JavaScript SDK
+    # This will clear the JWT token from browser cookies
+    print("Logging out user via client-side Clerk SDK")
+    return air.Tag(
+        air.H1("Signing out..."),
+        air.Script(
+            src=settings.CLERK_JS_SRC,
+            async_=True,
+            crossorigin="anonymous",
+            **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
+        ),
+        air.Script(f"""
+            document.addEventListener('DOMContentLoaded', async () => {{
+                if (!window.Clerk) return;
+                
+                await window.Clerk.load();
+                
+                // Sign out on the client side (clears cookies/tokens)
+                await window.Clerk.signOut();
+                
+                // Redirect to home page
+                window.location.assign('{settings.CLERK_LOGOUT_REDIRECT_ROUTE}');
+            }});
+        """),
+    )
 
 
  
