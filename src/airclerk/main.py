@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     CLERK_PUBLISHABLE_KEY: str
     CLERK_SECRET_KEY: str
     CLERK_JS_SRC: str = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
-    LOGIN_ROUTE: str = '/login'
-    LOGIN_REDIRECT_ROUTE: str = '/'
-    LOGOUT_ROUTE: str = '/logout'
-    LOGOUT_REDIRECT_ROUTE: str = '/'
+    CLERK_LOGIN_ROUTE: str = '/login'
+    CLERK_LOGIN_REDIRECT_ROUTE: str = '/'
+    CLERK_LOGOUT_ROUTE: str = '/logout'
+    CLERK_LOGOUT_REDIRECT_ROUTE: str = '/'
 
 settings = Settings()
 
@@ -134,7 +134,7 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
 require_auth = Depends(_require_auth)   
 
 
-@router.get(settings.LOGIN_ROUTE)
+@router.get(settings.CLERK_LOGIN_ROUTE)
 async def login(request: air.Request):
     httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
@@ -162,10 +162,10 @@ async def login(request: air.Request):
             image_url=user.image_url,
             last_active_at=user.last_active_at
         )
-        return air.RedirectResponse(settings.LOGIN_REDIRECT_ROUTE)
+        return air.RedirectResponse(settings.CLERK_LOGIN_REDIRECT_ROUTE)
     
 
-@router.get(settings.LOGOUT_ROUTE)
+@router.get(settings.CLERK_LOGOUT_ROUTE)
 async def logout(request: air.Request, user=require_auth):
     body = await request.body()
     httpx_request = httpx.Request(
@@ -175,14 +175,15 @@ async def logout(request: air.Request, user=require_auth):
         content=body,
     )    
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
-        session_id = request.session.get('sid')
+        user_data = request.session.get('user', {})
+        session_id = user_data.get('sid')
         if session_id is not None:
-            clerk.sessions.revoke(session_id=request.session.get('sid'))
+            clerk.sessions.revoke(session_id=session_id)
 
     if 'user' in request.session:
         request.session.pop('user')
 
-    return air.RedirectResponse(settings.LOGOUT_REDIRECT_ROUTE)
+    return air.RedirectResponse(settings.CLERK_LOGOUT_REDIRECT_ROUTE)
 
 
  

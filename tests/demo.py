@@ -24,8 +24,8 @@ def index(request: air.Request):
     return air.layouts.mvpcss(
         air.H1('AirClerk demo'),
         air.Ul(
-            air.Li(air.A('login', href=airclerk.settings.LOGIN_ROUTE)),
-            air.Li(air.A('logout', href=airclerk.settings.LOGOUT_ROUTE)),
+            air.Li(air.A('login', href=airclerk.settings.CLERK_LOGIN_ROUTE)),
+            air.Li(air.A('logout', href=airclerk.settings.CLERK_LOGOUT_ROUTE)),
             air.Li(air.A('protected', href=protected.url()))
         ),
         air.H3('User session'),
