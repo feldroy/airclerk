@@ -14,6 +14,9 @@ def sanitize_next(raw: str, default: str = "/") -> str:
     Only allows same-origin, absolute-path values starting with /.
     Rejects protocol-relative URLs (//), full URLs, and JavaScript URIs.
     """
+    if not raw:
+        return default
+    
     raw = raw.strip()
     if not raw:
         return default
