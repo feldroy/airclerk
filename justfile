@@ -25,7 +25,7 @@ qa:
 
 # Run the tests
 test:
-    uv run --env-file .env pytest tests/
+    uv run pytest tests/
 
 # Run the tests with pdb on failure
 pdb:
