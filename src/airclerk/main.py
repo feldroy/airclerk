@@ -8,6 +8,29 @@ import httpx
 from pydantic_settings import BaseSettings
 
 
+def sanitize_next(raw: str, default: str = "/") -> str:
+    """Sanitize next parameter to prevent open-redirect vulnerabilities.
+    
+    Only allows same-origin, absolute-path values starting with /.
+    Rejects protocol-relative URLs (//), full URLs, and JavaScript URIs.
+    """
+    raw = raw.strip()
+    if not raw:
+        return default
+    
+    if not raw.startswith('/'):
+        return default
+    
+    if raw.startswith('//'):
+        return default
+    
+    raw_lower = raw.lower()
+    if raw_lower.startswith(('http://', 'https://', 'javascript:')):
+        return default
+    
+    return raw
+
+
 class Settings(BaseSettings):
     """Environment variable specification"""
 
@@ -60,6 +83,7 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
             if request.url.query:
                 redirect_after_login += f"?{request.url.query}"
 
+            redirect_after_login = sanitize_next(redirect_after_login)
             login_url = f"{login.url()}?next={redirect_after_login}"
 
             if request.htmx:
@@ -83,6 +107,7 @@ require_auth = Depends(_require_auth)
 async def login(request: air.Request, next: str = "/"):
     httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
+    next = sanitize_next(next)
 
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
         state = clerk.authenticate_request(
