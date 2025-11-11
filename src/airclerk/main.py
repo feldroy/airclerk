@@ -1,4 +1,5 @@
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 import air
 from clerk_backend_api import Clerk
@@ -21,14 +22,13 @@ def sanitize_next(raw: str, default: str = "/") -> str:
     if not raw:
         return default
     
-    if not raw.startswith('/'):
+    parsed = urlparse(raw)
+    
+    # Reject if scheme or netloc is present (external URLs)
+    if parsed.scheme or parsed.netloc:
         return default
     
-    if raw.startswith('//'):
-        return default
-    
-    raw_lower = raw.lower()
-    if raw_lower.startswith(('http://', 'https://', 'javascript:')):
+    if not parsed.path.startswith('/'):
         return default
     
     return raw
