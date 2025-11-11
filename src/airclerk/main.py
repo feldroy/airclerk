@@ -38,16 +38,13 @@ async def _to_httpx_request(request: air.Request) -> httpx.Request:
     )
 
 
-async def _require_auth(request: air.Request) -> Dict[str, Any]:
-    """Require user to be authenticated - raises exception that redirects if not."""
-    body = await request.body()
-    httpx_request = httpx.Request(
-        method=request.method,
-        url=str(request.url),
-        headers=dict(request.headers),
-        content=body,
-    )
+async def _authenticate_request(
+    request: air.Request,
+) -> tuple[Any, Dict[str, Any] | None]:
+    """Shared authentication logic - returns (state, user) tuple."""
+    httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
+
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
         state = clerk.authenticate_request(
             httpx_request,
@@ -55,28 +52,92 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
         )
 
         if not state.is_signed_in:
-            # Store the original URL to redirect back after login
-            redirect_after_login = str(request.url.path)
-            if request.url.query:
-                redirect_after_login += f"?{request.url.query}"
+            return state, None
 
-            login_url = f"{login.url()}?next={redirect_after_login}"
-
-            if request.htmx:
-                raise air.HTTPException(
-                    status_code=status.HTTP_303_SEE_OTHER,
-                    headers={"Location": login_url},
-                )
-            raise air.HTTPException(
-                status_code=status.HTTP_303_SEE_OTHER,
-                headers={"Location": login_url},
-            )
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
         user = clerk.users.get(user_id=user_id)
-        return user
+        return state, user
+
+
+async def _require_auth(request: air.Request) -> Dict[str, Any]:
+    """Require user to be authenticated - raises exception that redirects if not."""
+    _, user = await _authenticate_request(request)
+
+    if user is None:
+        redirect_after_login = str(request.url.path)
+        if request.url.query:
+            redirect_after_login += f"?{request.url.query}"
+
+        login_url = f"{login.url()}?next={redirect_after_login}"
+
+        raise air.HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": login_url},
+        )
+
+    return user
+
+
+async def _optional_auth(request: air.Request) -> Dict[str, Any] | None:
+    """Authenticate user if possible, return None if not authenticated (no redirect)."""
+    _, user = await _authenticate_request(request)
+    return user
 
 
 require_auth = Depends(_require_auth)
+optional_user = Depends(_optional_auth)
+
+
+def clerk_scripts(user: Dict[str, Any] | None = None) -> air.Tag:
+    """Return Clerk JS script tags with auto-reload on auth state mismatch.
+
+    Include this on pages using optional_user to ensure server/client auth state stays in sync.
+    After login, if the server hasn't seen the session cookie yet, this auto-reloads the page.
+
+    Args:
+        user: The user object from optional_user. Pass it to enable auto-sync.
+
+    Returns:
+        Script tags to include in your page.
+
+    Example:
+        @app.page
+        def index(user=airclerk.optional_user):
+            return air.Tag(
+                airclerk.clerk_scripts(user),
+                air.H1("Welcome"),
+                # ... rest of page
+            )
+    """
+    scripts = [
+        air.Script(
+            src=settings.CLERK_JS_SRC,
+            async_=True,
+            crossorigin="anonymous",
+            **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
+        ),
+        air.Script(f"""
+            document.addEventListener('DOMContentLoaded', async () => {{
+                if (!window.Clerk) return;
+                await window.Clerk.load();
+                
+                const serverHasUser = {str(user is not None).lower()};
+                const clerkHasUser = !!window.Clerk.user;
+                
+                // If server and client auth states don't match, reload once
+                // Loop protection in case propogation fails due to vpn/proxy/weirdness.  May not be neccesary.
+                if (serverHasUser !== clerkHasUser) {{
+                    const reloadKey = 'clerk_auth_reloaded';
+                    if (!sessionStorage.getItem(reloadKey)) {{
+                        sessionStorage.setItem(reloadKey, '1');
+                        window.location.reload();
+                    }}
+                }}
+            }});
+        """),
+    ]
+
+    return air.Tag(*scripts)
 
 
 @router.get(settings.CLERK_LOGIN_ROUTE)
