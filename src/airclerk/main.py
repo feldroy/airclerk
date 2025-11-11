@@ -11,26 +11,26 @@ from pydantic_settings import BaseSettings
 
 def sanitize_next(raw: str, default: str = "/") -> str:
     """Sanitize next parameter to prevent open-redirect vulnerabilities.
-    
+
     Only allows same-origin, absolute-path values starting with /.
     Rejects protocol-relative URLs (//), full URLs, and JavaScript URIs.
     """
     if not raw:
         return default
-    
+
     raw = raw.strip()
     if not raw:
         return default
-    
+
     parsed = urlparse(raw)
-    
+
     # Reject if scheme or netloc is present (external URLs)
     if parsed.scheme or parsed.netloc:
         return default
-    
-    if not parsed.path.startswith('/'):
+
+    if not parsed.path.startswith("/"):
         return default
-    
+
     return raw
 
 
