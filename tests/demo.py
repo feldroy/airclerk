@@ -18,15 +18,28 @@ def dump(obj: dict) -> air.BaseTag:
 
 
 @app.page
-def index(request: air.Request):
-    return air.layouts.mvpcss(
-        air.H1("AirClerk demo"),
-        air.Ul(
-            air.Li(air.A("login", href=airclerk.settings.CLERK_LOGIN_ROUTE)),
-            air.Li(air.A("logout", href=airclerk.settings.CLERK_LOGOUT_ROUTE)),
+def index(request: air.Request, user=airclerk.optional_user):
+    links = []
+    if user:
+        email = user.email_addresses[0].email_address if user.email_addresses else user.id
+        links.extend([
+            air.Li(f"Logged in as {email}"),
             air.Li(air.A("protected", href=protected.url())),
+            air.Li(air.A("logout", href=airclerk.settings.CLERK_LOGOUT_ROUTE)),
+        ])
+    else:
+        links.extend([
+            air.Li(air.A("login", href=airclerk.settings.CLERK_LOGIN_ROUTE)),
+            air.Li(air.A("protected", href=protected.url())),
+        ])
+    
+    return air.Tag(
+        airclerk.clerk_scripts(user),
+        air.layouts.mvpcss(
+            air.H1("AirClerk demo"),
+            air.Ul(*links),
+            air.P("Authentication is handled by Clerk via JWT tokens in cookies."),
         ),
-        air.P("Authentication is handled by Clerk via JWT tokens in cookies."),
     )
 
 
