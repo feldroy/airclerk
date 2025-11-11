@@ -1,31 +1,5 @@
 import pytest
-
-
-def sanitize_next(raw: str, default: str = "/") -> str:
-    """Sanitize next parameter to prevent open-redirect vulnerabilities.
-    
-    Only allows same-origin, absolute-path values starting with /.
-    Rejects protocol-relative URLs (//), full URLs, and JavaScript URIs.
-    """
-    if not raw:
-        return default
-    
-    raw = raw.strip()
-    if not raw:
-        return default
-    
-    if not raw.startswith('/'):
-        return default
-    
-    if raw.startswith('//'):
-        return default
-    
-    raw_lower = raw.lower()
-    if raw_lower.startswith(('http://', 'https://', 'javascript:')):
-        return default
-    
-    return raw
-
+from airclerk.main import sanitize_next
 
 def test_check():
     assert 1 == 1
