@@ -1,4 +1,5 @@
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 import air
 from clerk_backend_api import Clerk
@@ -6,6 +7,31 @@ from clerk_backend_api.security.types import AuthenticateRequestOptions
 from fastapi import Depends, status
 import httpx
 from pydantic_settings import BaseSettings
+
+
+def sanitize_next(raw: str, default: str = "/") -> str:
+    """Sanitize next parameter to prevent open-redirect vulnerabilities.
+
+    Only allows same-origin, absolute-path values starting with /.
+    Rejects protocol-relative URLs (//), full URLs, and JavaScript URIs.
+    """
+    if not raw:
+        return default
+
+    raw = raw.strip()
+    if not raw:
+        return default
+
+    parsed = urlparse(raw)
+
+    # Reject if scheme or netloc is present (external URLs)
+    if parsed.scheme or parsed.netloc:
+        return default
+
+    if not parsed.path.startswith("/"):
+        return default
+
+    return raw
 
 
 class Settings(BaseSettings):
@@ -52,6 +78,23 @@ async def _authenticate_request(
         )
 
         if not state.is_signed_in:
+            # Store the original URL to redirect back after login
+            redirect_after_login = str(request.url.path)
+            if request.url.query:
+                redirect_after_login += f"?{request.url.query}"
+
+            redirect_after_login = sanitize_next(redirect_after_login)
+            login_url = f"{login.url()}?next={redirect_after_login}"
+
+            if request.htmx:
+                raise air.HTTPException(
+                    status_code=status.HTTP_303_SEE_OTHER,
+                    headers={"Location": login_url},
+                )
+            raise air.HTTPException(
+                status_code=status.HTTP_303_SEE_OTHER,
+                headers={"Location": login_url},
+            )
             return state, None
 
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
@@ -144,6 +187,7 @@ def clerk_scripts(user: Dict[str, Any] | None = None) -> air.Tag:
 async def login(request: air.Request, next: str = "/"):
     httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
+    next = sanitize_next(next)
 
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
         state = clerk.authenticate_request(
