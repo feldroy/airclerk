@@ -76,7 +76,79 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
         return user
 
 
+async def _optional_auth(request: air.Request) -> Dict[str, Any] | None:
+    """Authenticate user if possible, return None if not authenticated (no redirect)."""
+    body = await request.body()
+    httpx_request = httpx.Request(
+        method=request.method,
+        url=str(request.url),
+        headers=dict(request.headers),
+        content=body,
+    )
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
+        state = clerk.authenticate_request(
+            httpx_request,
+            AuthenticateRequestOptions(authorized_parties=[origin]),
+        )
+
+        if not state.is_signed_in:
+            return None
+
+        user_id = getattr(state, "user_id", None) or state.payload.get("sub")
+        user = clerk.users.get(user_id=user_id)
+        return user
+
+
 require_auth = Depends(_require_auth)
+optional_user = Depends(_optional_auth)
+
+
+def clerk_scripts(user: Dict[str, Any] | None = None) -> air.Tag:
+    """Return Clerk JS script tags with auto-reload on auth state mismatch.
+    
+    Include this on pages using optional_user to ensure server/client auth state stays in sync.
+    After login, if the server hasn't seen the session cookie yet, this auto-reloads the page.
+    
+    Args:
+        user: The user object from optional_user. Pass it to enable auto-sync.
+    
+    Returns:
+        Script tags to include in your page.
+    
+    Example:
+        @app.page
+        def index(user=airclerk.optional_user):
+            return air.Tag(
+                airclerk.clerk_scripts(user),
+                air.H1("Welcome"),
+                # ... rest of page
+            )
+    """
+    scripts = [
+        air.Script(
+            src=settings.CLERK_JS_SRC,
+            async_=True,
+            crossorigin="anonymous",
+            **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
+        ),
+        air.Script(f"""
+            document.addEventListener('DOMContentLoaded', async () => {{
+                if (!window.Clerk) return;
+                await window.Clerk.load();
+                
+                const serverHasUser = {str(user is not None).lower()};
+                const clerkHasUser = !!window.Clerk.user;
+                
+                // If server and client auth states don't match, reload once
+                if (serverHasUser !== clerkHasUser) {{
+                    window.location.reload();
+                }}
+            }});
+        """)
+    ]
+    
+    return air.Tag(*scripts)
 
 
 @router.get(settings.CLERK_LOGIN_ROUTE)
