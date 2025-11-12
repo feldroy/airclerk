@@ -78,23 +78,6 @@ async def _authenticate_request(
         )
 
         if not state.is_signed_in:
-            # Store the original URL to redirect back after login
-            redirect_after_login = str(request.url.path)
-            if request.url.query:
-                redirect_after_login += f"?{request.url.query}"
-
-            redirect_after_login = sanitize_next(redirect_after_login)
-            login_url = f"{login.url()}?next={redirect_after_login}"
-
-            if request.htmx:
-                raise air.HTTPException(
-                    status_code=status.HTTP_303_SEE_OTHER,
-                    headers={"Location": login_url},
-                )
-            raise air.HTTPException(
-                status_code=status.HTTP_303_SEE_OTHER,
-                headers={"Location": login_url},
-            )
             return state, None
 
         user_id = getattr(state, "user_id", None) or state.payload.get("sub")
@@ -111,8 +94,14 @@ async def _require_auth(request: air.Request) -> Dict[str, Any]:
         if request.url.query:
             redirect_after_login += f"?{request.url.query}"
 
+        redirect_after_login = sanitize_next(redirect_after_login)
         login_url = f"{login.url()}?next={redirect_after_login}"
 
+        if request.htmx:
+            raise air.HTTPException(
+                status_code=status.HTTP_303_SEE_OTHER,
+                headers={"Location": login_url},
+            )
         raise air.HTTPException(
             status_code=status.HTTP_303_SEE_OTHER,
             headers={"Location": login_url},
@@ -231,7 +220,7 @@ async def login(request: air.Request, next: str = "/"):
 
 
 @router.get(settings.CLERK_LOGOUT_ROUTE)
-async def logout(request: air.Request, user=require_auth):
+async def logout(user=require_auth):
     # Return a page that triggers client-side logout via Clerk JavaScript SDK
     # This will clear the JWT token from browser cookies
     return air.Tag(
