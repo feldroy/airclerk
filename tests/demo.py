@@ -54,6 +54,7 @@ def index(request: air.Request, user=airclerk.optional_user):
 @app.page
 def protected(request: air.Request, user=airclerk.require_auth):
     return air.layouts.mvpcss(
+        airclerk.clerk_scripts(user),
         air.H1("Protected view"),
         air.P(air.A("home", href=index.url())),
         air.H2("Clerk user object"),
