@@ -195,23 +195,18 @@ async def login(request: air.Request, next: str = "/"):
                     **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
                 ),
                 air.Script(f"""
-                    document.addEventListener('load', async () => {{
-                    if (!window.Clerk) {{ 
-                        console.log('Clerk not loaded')
-                        return;
-                    }};
+                    window.addEventListener('load', async function() {{
+                        await window.Clerk.load();
 
-                    await window.Clerk.load();
+                        if (window.Clerk.user) {{
+                            window.location.assign('{next}');
+                            return;
+                        }}
 
-                    if (window.Clerk.user) {{
-                        window.location.assign('{next}');
-                        return;
-                    }}
-
-                    window.Clerk.mountSignIn(
-                        document.getElementById('sign-in'),
-                        {{ redirectUrl: '{next}' }}
-                    );
+                        window.Clerk.mountSignIn(
+                            document.getElementById('sign-in'),
+                            {{ redirectUrl: '{next}' }}
+                        );
                     }});
                     """),
             )
@@ -231,9 +226,7 @@ async def logout(request: air.Request, user=require_auth):
     """
     return air.Script(
         f"""
-            document.addEventListener('htmx:load', async () => {{
-                if (!window.Clerk) return;
-                
+            window.addEventListener('htmx:load', async function() {{
                 await window.Clerk.load();
                 
                 // Sign out on the client side (clears cookies/tokens)
