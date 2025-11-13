@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import air
 import airclerk
 
@@ -28,7 +30,7 @@ def index(request: air.Request, user=airclerk.optional_user):
             [
                 air.Li(f"Logged in as {email}"),
                 air.Li(air.A("protected", href=protected.url())),
-                air.Li(air.A("logout", href=airclerk.settings.CLERK_LOGOUT_ROUTE)),
+                air.Li(air.A("logout", hx_post=airclerk.settings.CLERK_LOGOUT_ROUTE)),
             ]
         )
     else:
@@ -52,8 +54,13 @@ def index(request: air.Request, user=airclerk.optional_user):
 @app.page
 def protected(request: air.Request, user=airclerk.require_auth):
     return air.layouts.mvpcss(
+        airclerk.clerk_scripts(user),
         air.H1("Protected view"),
         air.P(air.A("home", href=index.url())),
         air.H2("Clerk user object"),
+        air.P(
+            air.Strong("Last sign in at: "),
+            datetime.fromtimestamp(user.last_sign_in_at / 1000),
+        ),
         dump(user),
     )
