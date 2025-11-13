@@ -210,7 +210,7 @@ async def login(request: air.Request, next: str = "/"):
                         document.getElementById('sign-in'),
                         {{ redirectUrl: '{next}' }}
                     );
-                    }});
+                    }})
                     """),
             )
 
