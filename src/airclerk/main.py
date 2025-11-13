@@ -61,7 +61,7 @@ async def _to_httpx_request(request: air.Request) -> httpx.Request:
         url=str(request.url),
         headers=dict(request.headers),
         content=body,
-    )   
+    )
 
 
 async def _authenticate_request(
@@ -220,20 +220,23 @@ async def login(request: air.Request, next: str = "/"):
 
 
 @router.post(settings.CLERK_LOGOUT_ROUTE)
-async def logout(user=require_auth):
-    # Return a page that triggers client-side logout via Clerk JavaScript SDK
-    # This will clear the JWT token from browser cookies
+async def logout(request: air.Request, user=require_auth):
+    """
+    Return a page that triggers client-side logout via Clerk JavaScript SDK
+    This will clear the JWT token from browser cookies
+    """
     return air.Tag(
-        air.A('Logged out', href=request.htmx.current_url),
+        air.A("Logged out", href=request.htmx.current_url),
         air.Script(
             src=settings.CLERK_JS_SRC,
             async_=True,
             crossorigin="anonymous",
-            id='header_script1',
-            hx_swap_oob='true',
+            id="header_script1",
+            hx_swap_oob="true",
             **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
         ),
-        air.Script(f"""
+        air.Script(
+            f"""
             document.addEventListener('DOMContentLoaded', async () => {{
                 if (!window.Clerk) return;
                 
@@ -246,6 +249,7 @@ async def logout(user=require_auth):
                 window.location.href = '{settings.CLERK_LOGOUT_REDIRECT_ROUTE}';
             }});
         """,
-        hx_swap_oob='true',
-        id='header_script2'),
+            hx_swap_oob="true",
+            id="header_script2",
+        ),
     )

@@ -57,6 +57,9 @@ def protected(request: air.Request, user=airclerk.require_auth):
         air.H1("Protected view"),
         air.P(air.A("home", href=index.url())),
         air.H2("Clerk user object"),
-        air.P(air.Strong("Last sign in at: "), datetime.fromtimestamp(user.last_sign_in_at / 1000)),
+        air.P(
+            air.Strong("Last sign in at: "),
+            datetime.fromtimestamp(user.last_sign_in_at / 1000),
+        ),
         dump(user),
     )
