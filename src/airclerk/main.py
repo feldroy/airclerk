@@ -191,11 +191,15 @@ async def login(request: air.Request, next: str = "/"):
                     src=settings.CLERK_JS_SRC,
                     async_=True,
                     crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
+                    type="text/javascript",
                     **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
                 ),
                 air.Script(f"""
-                    document.addEventListener('DOMContentLoaded', async () => {{
-                    if (!window.Clerk) return;
+                    document.addEventListener('load', async () => {{
+                    if (!window.Clerk) {{ 
+                        console.log('Clerk not loaded')
+                        return;
+                    }};
 
                     await window.Clerk.load();
 
