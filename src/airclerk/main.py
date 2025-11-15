@@ -144,7 +144,6 @@ def clerk_scripts(user: Dict[str, Any] | None = None) -> air.Tag:
     scripts = [
         air.Script(
             src=settings.CLERK_JS_SRC,
-            async_=True,
             crossorigin="anonymous",
             **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
         ),
@@ -189,13 +188,12 @@ async def login(request: air.Request, next: str = "/"):
                 air.Div(id="sign-in"),
                 air.Script(
                     src=settings.CLERK_JS_SRC,
-                    async_=True,
                     crossorigin="anonymous",  # allow fetching Clerk script without cookies/sensitive credentials
                     type="text/javascript",
                     **{"data-clerk-publishable-key": settings.CLERK_PUBLISHABLE_KEY},
                 ),
                 air.Script(f"""
-                    document.addEventListener('load', async () => {{
+                    document.addEventListener('DOMContentLoaded', async () => {{
                     if (!window.Clerk) {{ 
                         console.log('Clerk not loaded')
                         return;
@@ -212,7 +210,7 @@ async def login(request: air.Request, next: str = "/"):
                         document.getElementById('sign-in'),
                         {{ redirectUrl: '{next}' }}
                     );
-                    }});
+                    }})
                     """),
             )
 
