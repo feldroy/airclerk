@@ -31,4 +31,4 @@ app.add_middleware(air.SessionMiddleware, secret_key="change-me")
 app.include_router(airclerk.router)
 ```
 
-When you run an development OAuth-powered Air application with AirClerk, don't use localhost as your domain, as Clerk does not support it. Use `127.0.0.1` instead.
+When you run a development OAuth-powered Air application with AirClerk, don't use localhost as your domain, as Clerk does not support it. Use `127.0.0.1` instead.
