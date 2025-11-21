@@ -13,4 +13,22 @@ AirClerk is driven by the following environment variables:
 | `CLERK_JS_SRC` | str | No | `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js` | CDN URL for the Clerk JavaScript library |
 | `CLERK_LOGIN_ROUTE` | str | No | `/login` | URL path for the login page |
 | `CLERK_LOGOUT_ROUTE` | str | No | `/logout` | URL path for the logout endpoint |
+| `CLERK_LOGIN_REDIRECT_ROUTE` | str | No | `/` | Where the user is redirected to after login |
+| `CLERK_LOGOUT_REDIRECT_ROUTE` | str | No | `/` | Where the user is redirected to after logout |
 
+You must set the required environment variables for AirClerk to function properly. Optional variables can be customized as needed.
+
+## Usage
+
+To use AirClerk in your Air application, include the middleware and router as shown below:
+
+```python
+import air
+import airclerk
+
+app = air.Air()
+app.add_middleware(air.SessionMiddleware, secret_key="change-me")
+app.include_router(airclerk.router)
+```
+
+When you run a development OAuth-powered Air application with AirClerk, don't use localhost as your domain, as Clerk does not support it. Use `127.0.0.1` instead.
