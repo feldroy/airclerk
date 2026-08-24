@@ -31,4 +31,17 @@ app.add_middleware(air.SessionMiddleware, secret_key="change-me")
 app.include_router(airclerk.router)
 ```
 
+Use the verified session claims for most routes:
+
+```python
+@app.page
+def protected(claims=airclerk.require_auth_claims):
+    return air.P(f"Signed in as {claims['sub']}")
+```
+
+Use `airclerk.require_user` when a route needs the full Clerk profile. The
+existing `airclerk.require_auth` dependency remains an alias for that
+full-profile behavior. `airclerk.fetch_user(user_id)` is available for
+explicit lookups.
+
 When you run a development OAuth-powered Air application with AirClerk, don't use localhost as your domain, as Clerk does not support it. Use `127.0.0.1` instead.
