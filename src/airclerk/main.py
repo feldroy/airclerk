@@ -208,7 +208,10 @@ async def login(request: air.Request, next: str = "/"):
 
                     window.Clerk.mountSignIn(
                         document.getElementById('sign-in'),
-                        {{ redirectUrl: '{next}' }}
+                        // Clerk JS 5.x deprecates redirectUrl for sign-in components.
+                        // next is an explicit, sanitized destination, so force it.
+                        // https://clerk.com/docs/guides/development/customize-redirect-urls
+                        {{ forceRedirectUrl: '{next}' }}
                     );
                     }})
                     """),
