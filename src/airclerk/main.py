@@ -1,5 +1,5 @@
 from typing import Any, Dict
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import air
 from clerk_backend_api import Clerk
@@ -82,7 +82,7 @@ def _login_redirect(request: air.Request) -> None:
         redirect_after_login += f"?{request.url.query}"
 
     redirect_after_login = sanitize_next(redirect_after_login)
-    login_url = f"{login.url()}?next={redirect_after_login}"
+    login_url = f"{login.url()}?{urlencode({'next': redirect_after_login})}"
     raise air.HTTPException(
         status_code=status.HTTP_303_SEE_OTHER,
         headers={"Location": login_url},

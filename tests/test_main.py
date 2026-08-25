@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import air
 import airclerk
@@ -114,10 +115,11 @@ def test_claims_dependency_redirects_unauthenticated_requests():
 
     with patch("airclerk.main.Clerk", _UnauthenticatedFakeClerk):
         with TestClient(app) as client:
-            response = client.get("/protected", follow_redirects=False)
+            response = client.get("/protected?a=1&b=2", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/login?next=/protected"
+    location = response.headers["location"]
+    assert parse_qs(urlparse(location).query)["next"] == ["/protected?a=1&b=2"]
 
 
 def test_claims_dependency_does_not_fetch_full_user():
@@ -151,5 +153,47 @@ def test_full_user_dependency_fetches_profile_on_request():
 
     assert response.status_code == 200
     assert "Full profile" in response.text
+    calls = [user_id for clerk in _FakeClerk.instances for user_id in clerk.users.calls]
+    assert calls == ["user_123"]
+
+
+def test_optional_claims_dependency_returns_none_without_authentication():
+    app = air.Air()
+
+    @app.page
+    def optional(claims=airclerk.optional_auth_claims):
+        return air.P("signed out" if claims is None else "signed in")
+
+    with patch("airclerk.main.Clerk", _UnauthenticatedFakeClerk):
+        with TestClient(app) as client:
+            response = client.get("/optional")
+
+    assert response.status_code == 200
+    assert "signed out" in response.text
+
+
+def test_optional_dependencies_fetch_only_when_full_user_is_requested():
+    _FakeClerk.instances.clear()
+    app = air.Air()
+
+    @app.page
+    def claims(claims=airclerk.optional_auth_claims):
+        return air.P(claims["sub"])
+
+    @app.page
+    def user(user=airclerk.optional_user):
+        return air.P(user.name)
+
+    with patch("airclerk.main.Clerk", _FakeClerk):
+        with TestClient(app) as client:
+            claims_response = client.get(
+                "/claims", headers={"cookie": "__session=token"}
+            )
+            user_response = client.get("/user", headers={"cookie": "__session=token"})
+
+    assert claims_response.status_code == 200
+    assert "user_123" in claims_response.text
+    assert user_response.status_code == 200
+    assert "Full profile" in user_response.text
     calls = [user_id for clerk in _FakeClerk.instances for user_id in clerk.users.calls]
     assert calls == ["user_123"]
