@@ -150,20 +150,20 @@ require_auth = require_user
 def clerk_scripts(user: Dict[str, Any] | None = None) -> air.Tag:
     """Return Clerk JS script tags with auto-reload on auth state mismatch.
 
-    Include this on pages using optional_user to ensure server/client auth state stays in sync.
+    Include this on pages using optional_auth_claims to ensure server/client auth state stays in sync.
     After login, if the server hasn't seen the session cookie yet, this auto-reloads the page.
 
     Args:
-        user: The user object from optional_user. Pass it to enable auto-sync.
+        user: Server-side authentication state or verified session claims. Pass it to enable auto-sync.
 
     Returns:
         Script tags to include in your page.
 
     Example:
         @app.page
-        def index(user=airclerk.optional_user):
+        def index(claims=airclerk.optional_auth_claims):
             return air.Tag(
-                airclerk.clerk_scripts(user),
+                airclerk.clerk_scripts(claims),
                 air.H1("Welcome"),
                 # ... rest of page
             )
