@@ -72,7 +72,10 @@ async def _authenticate_request(request: air.Request) -> RequestState:
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
         return clerk.authenticate_request(
             httpx_request,
-            AuthenticateRequestOptions(authorized_parties=[origin]),
+            AuthenticateRequestOptions(
+                authorized_parties=[origin],
+                accepts_token=["session_token"],
+            ),
         )
 
 
@@ -111,18 +114,20 @@ def fetch_user(user_id: str) -> Any:
         return clerk.users.get(user_id=user_id)
 
 
-async def _require_user(request: air.Request) -> Any:
+async def _require_user(
+    claims: Dict[str, Any] = Depends(_require_auth_claims),
+) -> Any:
     """Require authentication and fetch the full Clerk user profile."""
-    claims = await _require_auth_claims(request)
     user_id = claims.get("sub")
     if not user_id:
         raise air.HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     return fetch_user(user_id)
 
 
-async def _optional_user(request: air.Request) -> Any | None:
+async def _optional_user(
+    claims: Dict[str, Any] | None = Depends(_optional_auth_claims),
+) -> Any | None:
     """Fetch the full Clerk user profile when the request is authenticated."""
-    claims = await _optional_auth_claims(request)
     if claims is None:
         return None
     user_id = claims.get("sub")

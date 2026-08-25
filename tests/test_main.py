@@ -89,6 +89,8 @@ class _FakeClerk:
 
     def __init__(self, **kwargs):
         self.users = _FakeUsers()
+        self.auth_calls = 0
+        self.auth_options = []
         self.instances.append(self)
 
     def __enter__(self):
@@ -98,6 +100,8 @@ class _FakeClerk:
         pass
 
     def authenticate_request(self, *args, **kwargs):
+        self.auth_calls += 1
+        self.auth_options.append(args[1])
         return _AuthenticatedState()
 
 
@@ -137,6 +141,11 @@ def test_claims_dependency_does_not_fetch_full_user():
     assert response.status_code == 200
     assert "user_123" in response.text
     assert all(not clerk.users.calls for clerk in _FakeClerk.instances)
+    assert all(
+        option.accepts_token == ["session_token"]
+        for clerk in _FakeClerk.instances
+        for option in clerk.auth_options
+    )
 
 
 def test_full_user_dependency_fetches_profile_on_request():
@@ -197,3 +206,42 @@ def test_optional_dependencies_fetch_only_when_full_user_is_requested():
     assert "Full profile" in user_response.text
     calls = [user_id for clerk in _FakeClerk.instances for user_id in clerk.users.calls]
     assert calls == ["user_123"]
+
+
+def test_required_dependencies_reuse_authentication():
+    _FakeClerk.instances.clear()
+    app = air.Air()
+
+    @app.page
+    def profile(claims=airclerk.require_auth_claims, user=airclerk.require_user):
+        return air.P(claims["sub"], user.name)
+
+    with patch("airclerk.main.Clerk", _FakeClerk):
+        with TestClient(app) as client:
+            response = client.get("/profile", headers={"cookie": "__session=token"})
+
+    assert response.status_code == 200
+    assert "user_123" in response.text
+    assert "Full profile" in response.text
+    assert sum(clerk.auth_calls for clerk in _FakeClerk.instances) == 1
+
+
+def test_optional_dependencies_reuse_authentication():
+    _FakeClerk.instances.clear()
+    app = air.Air()
+
+    @app.page
+    def profile(
+        claims=airclerk.optional_auth_claims,
+        user=airclerk.optional_user,
+    ):
+        return air.P(claims["sub"], user.name)
+
+    with patch("airclerk.main.Clerk", _FakeClerk):
+        with TestClient(app) as client:
+            response = client.get("/profile", headers={"cookie": "__session=token"})
+
+    assert response.status_code == 200
+    assert "user_123" in response.text
+    assert "Full profile" in response.text
+    assert sum(clerk.auth_calls for clerk in _FakeClerk.instances) == 1
