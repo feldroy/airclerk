@@ -114,7 +114,7 @@ def fetch_user(user_id: str) -> Any:
         return clerk.users.get(user_id=user_id)
 
 
-async def _require_user(
+def _require_user(
     claims: Dict[str, Any] = Depends(_require_auth_claims),
 ) -> Any:
     """Require authentication and fetch the full Clerk user profile."""
@@ -124,7 +124,7 @@ async def _require_user(
     return fetch_user(user_id)
 
 
-async def _optional_user(
+def _optional_user(
     claims: Dict[str, Any] | None = Depends(_optional_auth_claims),
 ) -> Any | None:
     """Fetch the full Clerk user profile when the request is authenticated."""
