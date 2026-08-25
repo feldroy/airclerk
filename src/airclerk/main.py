@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict
 from urllib.parse import urlparse
 
@@ -32,6 +33,16 @@ def sanitize_next(raw: str, default: str = "/") -> str:
         return default
 
     return raw
+
+
+def _js_string_literal(value: str) -> str:
+    """Serialize a value for safe insertion as a JavaScript string literal."""
+    return (
+        json.dumps(value, ensure_ascii=True)
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("&", r"\u0026")
+    )
 
 
 class Settings(BaseSettings):
@@ -176,6 +187,7 @@ async def login(request: air.Request, next: str = "/"):
     httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
     next = sanitize_next(next)
+    next_js = _js_string_literal(next)
 
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
         state = clerk.authenticate_request(
@@ -202,7 +214,7 @@ async def login(request: air.Request, next: str = "/"):
                     await window.Clerk.load();
 
                     if (window.Clerk.user) {{
-                        window.location.assign('{next}');
+                        window.location.assign({next_js});
                         return;
                     }}
 
@@ -211,7 +223,7 @@ async def login(request: air.Request, next: str = "/"):
                         // Clerk JS 5.x deprecates redirectUrl for sign-in components.
                         // next is an explicit, sanitized destination, so force it.
                         // https://clerk.com/docs/guides/development/customize-redirect-urls
-                        {{ forceRedirectUrl: '{next}' }}
+                        {{ forceRedirectUrl: {next_js} }}
                     );
                     }})
                     """),
