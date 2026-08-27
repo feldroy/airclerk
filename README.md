@@ -31,17 +31,47 @@ app.add_middleware(air.SessionMiddleware, secret_key="change-me")
 app.include_router(airclerk.router)
 ```
 
-Use the verified session claims for most routes:
+When you run a development OAuth-powered Air application with AirClerk, don't use localhost as your domain, as Clerk does not support it. Use `127.0.0.1` instead.
+
+### Reading user data from session claims
+
+For most routes, use the verified session claims. This avoids a request to
+Clerk's Backend API:
 
 ```python
 @app.page
 def protected(claims=airclerk.require_auth_claims):
-    return air.P(f"Signed in as {claims['sub']}")
+    user_id = claims["sub"]
+    organization_id = claims.get("org_id")
+    return air.P(f"Signed in as {user_id} ({organization_id or 'no organization'})")
 ```
 
-Use `airclerk.require_user` when a route needs the full Clerk profile. The
-existing `airclerk.require_auth` dependency remains an alias for that
-full-profile behavior. `airclerk.fetch_user(user_id)` is available for
-explicit lookups.
+The claims commonly include values such as `sub` (user ID), `sid` (session
+ID), and token timestamps. When a user has an active organization, organization
+claims may also be present. The exact set depends on your Clerk session token
+version and configuration. See Clerk's [session token claims
+reference](https://clerk.com/docs/guides/sessions/session-tokens) for the
+default claims and [custom session token
+guide](https://clerk.com/docs/guides/sessions/customize-session-tokens) for
+adding your own.
 
-When you run a development OAuth-powered Air application with AirClerk, don't use localhost as your domain, as Clerk does not support it. Use `127.0.0.1` instead.
+To see what your instance provides, temporarily log the claims on the server:
+
+```python
+@app.page
+def inspect_claims(claims=airclerk.require_auth_claims):
+    print(sorted(claims))
+    return air.P("Claims were printed to the server log.")
+```
+
+Do not expose claims or session tokens in a public response or log in
+production.
+
+If a route needs fields that are not in the claims, use the full Clerk user
+profile dependency:
+
+```python
+@app.page
+def profile(user=airclerk.require_user):
+    return air.P(user.first_name or user.id)
+```
