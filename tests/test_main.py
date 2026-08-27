@@ -1,4 +1,8 @@
-from airclerk.main import sanitize_next
+from unittest.mock import patch
+
+import air
+from airclerk.main import _js_string_literal, router, sanitize_next
+from starlette.testclient import TestClient
 
 
 def test_check():
@@ -53,3 +57,64 @@ class TestSanitizeNext:
     def test_case_insensitive_protocol_check(self):
         assert sanitize_next("HTTPS://example.com") == "/"
         assert sanitize_next("JavaScript:alert(1)") == "/"
+
+
+class _UnauthenticatedState:
+    is_signed_in = False
+
+
+class _FakeClerk:
+    def __init__(self, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def authenticate_request(self, *args, **kwargs):
+        return _UnauthenticatedState()
+
+
+def test_login_uses_force_redirect_url_for_explicit_next():
+    app = air.Air()
+    app.include_router(router)
+
+    with patch("airclerk.main.Clerk", _FakeClerk):
+        with TestClient(app) as client:
+            response = client.get("/login?next=/protected")
+
+    assert response.status_code == 200
+    assert 'forceRedirectUrl: "/protected"' in response.text
+    assert 'window.location.assign("/protected")' in response.text
+    assert "{ redirectUrl:" not in response.text
+
+
+def test_login_escapes_next_before_embedding_in_script():
+    app = air.Air()
+    app.include_router(router)
+    dangerous_next = '/";alert(document.domain);//</script>&\\'
+    next_js = _js_string_literal(dangerous_next)
+
+    with patch("airclerk.main.Clerk", _FakeClerk):
+        with TestClient(app) as client:
+            response = client.get("/login", params={"next": dangerous_next})
+
+    assert response.status_code == 200
+    assert "</script>" not in next_js
+    assert r"\u003c/script\u003e\u0026" in next_js
+    assert f"window.location.assign({next_js})" in response.text
+    assert f"forceRedirectUrl: {next_js}" in response.text
+
+
+def test_logout_keeps_redirect_url_for_sign_out():
+    app = air.Air()
+    app.include_router(router)
+
+    with TestClient(app) as client:
+        response = client.post("/logout")
+
+    assert response.status_code == 200
+    assert "signOut({ redirectUrl: '/' })" in response.text
+    assert "forceRedirectUrl" not in response.text
