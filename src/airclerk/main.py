@@ -1,9 +1,9 @@
 from typing import Any, Dict
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import air
 from clerk_backend_api import Clerk
-from clerk_backend_api.security.types import AuthenticateRequestOptions
+from clerk_backend_api.security.types import AuthenticateRequestOptions, RequestState
 from fastapi import Depends, status
 import httpx
 from pydantic_settings import BaseSettings
@@ -64,79 +64,106 @@ async def _to_httpx_request(request: air.Request) -> httpx.Request:
     )
 
 
-async def _authenticate_request(
-    request: air.Request,
-) -> tuple[Any, Dict[str, Any] | None]:
-    """Shared authentication logic - returns (state, user) tuple."""
+async def _authenticate_request(request: air.Request) -> RequestState:
+    """Authenticate a request and return Clerk's verified request state."""
     httpx_request = await _to_httpx_request(request)
     origin = f"{request.url.scheme}://{request.url.netloc}"
 
     with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
-        state = clerk.authenticate_request(
+        return clerk.authenticate_request(
             httpx_request,
-            AuthenticateRequestOptions(authorized_parties=[origin]),
+            AuthenticateRequestOptions(
+                authorized_parties=[origin],
+                accepts_token=["session_token"],
+            ),
         )
 
-        if not state.is_signed_in:
-            return state, None
 
-        user_id = getattr(state, "user_id", None) or state.payload.get("sub")
-        user = clerk.users.get(user_id=user_id)
-        return state, user
+def _login_redirect(request: air.Request) -> None:
+    redirect_after_login = str(request.url.path)
+    if request.url.query:
+        redirect_after_login += f"?{request.url.query}"
 
-
-async def _require_auth(request: air.Request) -> Dict[str, Any]:
-    """Require user to be authenticated - raises exception that redirects if not."""
-    _, user = await _authenticate_request(request)
-
-    if user is None:
-        redirect_after_login = str(request.url.path)
-        if request.url.query:
-            redirect_after_login += f"?{request.url.query}"
-
-        redirect_after_login = sanitize_next(redirect_after_login)
-        login_url = f"{login.url()}?next={redirect_after_login}"
-
-        if request.htmx:
-            raise air.HTTPException(
-                status_code=status.HTTP_303_SEE_OTHER,
-                headers={"Location": login_url},
-            )
-        raise air.HTTPException(
-            status_code=status.HTTP_303_SEE_OTHER,
-            headers={"Location": login_url},
-        )
-
-    return user
+    redirect_after_login = sanitize_next(redirect_after_login)
+    login_url = f"{login.url()}?{urlencode({'next': redirect_after_login})}"
+    raise air.HTTPException(
+        status_code=status.HTTP_303_SEE_OTHER,
+        headers={"Location": login_url},
+    )
 
 
-async def _optional_auth(request: air.Request) -> Dict[str, Any] | None:
-    """Authenticate user if possible, return None if not authenticated (no redirect)."""
-    _, user = await _authenticate_request(request)
-    return user
+async def _require_auth_claims(request: air.Request) -> Dict[str, Any]:
+    """Require authentication and return the verified JWT claims."""
+    state = await _authenticate_request(request)
+    if not state.is_signed_in:
+        _login_redirect(request)
+    return state.payload or {}
 
 
-require_auth = Depends(_require_auth)
-optional_user = Depends(_optional_auth)
+async def _optional_auth_claims(request: air.Request) -> Dict[str, Any] | None:
+    """Return verified JWT claims when the request is authenticated."""
+    state = await _authenticate_request(request)
+    if not state.is_signed_in:
+        return None
+    return state.payload or {}
+
+
+def fetch_user(user_id: str) -> Any:
+    """Fetch a full Clerk user profile by ID when profile fields are needed."""
+    with Clerk(bearer_auth=settings.CLERK_SECRET_KEY) as clerk:
+        return clerk.users.get(user_id=user_id)
+
+
+def _require_user(
+    claims: Dict[str, Any] = Depends(_require_auth_claims),
+) -> Any:
+    """Require authentication and fetch the full Clerk user profile."""
+    user_id = claims.get("sub")
+    if not user_id:
+        raise air.HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return fetch_user(user_id)
+
+
+def _optional_user(
+    claims: Dict[str, Any] | None = Depends(_optional_auth_claims),
+) -> Any | None:
+    """Fetch the full Clerk user profile when the request is authenticated."""
+    if claims is None:
+        return None
+    user_id = claims.get("sub")
+    if not user_id:
+        return None
+    return fetch_user(user_id)
+
+
+require_auth_claims = Depends(_require_auth_claims)
+optional_auth_claims = Depends(_optional_auth_claims)
+require_user = Depends(_require_user)
+optional_user = Depends(_optional_user)
+
+# Keep the existing name as a compatibility alias for applications that need
+# the full user object. New routes should choose require_auth_claims unless
+# they need profile fields.
+require_auth = require_user
 
 
 def clerk_scripts(user: Dict[str, Any] | None = None) -> air.Tag:
     """Return Clerk JS script tags with auto-reload on auth state mismatch.
 
-    Include this on pages using optional_user to ensure server/client auth state stays in sync.
+    Include this on pages using optional_auth_claims to ensure server/client auth state stays in sync.
     After login, if the server hasn't seen the session cookie yet, this auto-reloads the page.
 
     Args:
-        user: The user object from optional_user. Pass it to enable auto-sync.
+        user: Server-side authentication state or verified session claims. Pass it to enable auto-sync.
 
     Returns:
         Script tags to include in your page.
 
     Example:
         @app.page
-        def index(user=airclerk.optional_user):
+        def index(claims=airclerk.optional_auth_claims):
             return air.Tag(
-                airclerk.clerk_scripts(user),
+                airclerk.clerk_scripts(claims),
                 air.H1("Welcome"),
                 # ... rest of page
             )

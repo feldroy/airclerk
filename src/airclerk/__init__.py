@@ -1,4 +1,8 @@
 from .main import require_auth as require_auth
+from .main import require_auth_claims as require_auth_claims
+from .main import require_user as require_user
+from .main import fetch_user as fetch_user
+from .main import optional_auth_claims as optional_auth_claims
 from .main import optional_user as optional_user
 from .main import clerk_scripts as clerk_scripts
 from .main import router as router
